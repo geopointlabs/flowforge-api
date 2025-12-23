@@ -1,0 +1,84 @@
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const snowflake = require("snowflake-sdk");
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(",") || ["https://flowforgelabs.io"],
+}));
+app.use(express.json());
+
+// Snowflake connection pool
+const connectionPool = snowflake.createPool(
+  {
+    account: process.env.SNOWFLAKE_ACCOUNT,
+    username: process.env.SNOWFLAKE_USERNAME,
+    password: process.env.SNOWFLAKE_PASSWORD,
+    warehouse: process.env.SNOWFLAKE_WAREHOUSE,
+    database: process.env.SNOWFLAKE_DATABASE,
+    schema: process.env.SNOWFLAKE_SCHEMA,
+  },
+  { max: 5, min: 0 }
+);
+
+// Email validation
+const isValidEmail = (email) => {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+};
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// Waitlist signup endpoint
+app.post("/api/waitlist", async (req, res) => {
+  const { email } = req.body;
+
+  // Validate
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ error: "Valid email is required" });
+  }
+
+  // Get client info
+  const ipAddress = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  const userAgent = req.headers["user-agent"] || "";
+
+  try {
+    const connection = await connectionPool.acquire();
+    
+    await new Promise((resolve, reject) => {
+      connection.execute({
+        sqlText: `INSERT INTO WAITLIST (email, ip_address, user_agent) VALUES (?, ?, ?)`,
+        binds: [email.toLowerCase().trim(), ipAddress, userAgent.substring(0, 512)],
+        complete: (err, stmt, rows) => {
+          connectionPool.release(connection);
+          if (err) reject(err);
+          else resolve(rows);
+        },
+      });
+    });
+
+    res.json({ success: true, message: "Thanks for signing up!" });
+  } catch (error) {
+    console.error("Snowflake error:", error);
+    
+    // Check for duplicate email (if you add a unique constraint)
+    if (error.message?.includes("duplicate")) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+    
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`API server running on port ${PORT}`);
+});
