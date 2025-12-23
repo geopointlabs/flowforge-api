@@ -50,14 +50,33 @@ app.post("/api/waitlist", async (req, res) => {
   // Get client info
   const ipAddress = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   const userAgent = req.headers["user-agent"] || "";
+  const normalizedEmail = email.toLowerCase().trim();
 
   try {
     const connection = await connectionPool.acquire();
-    
+
+    // Check if email already exists
+    const exists = await new Promise((resolve, reject) => {
+      connection.execute({
+        sqlText: "SELECT COUNT(*) as count FROM WAITLIST WHERE email = ?",
+        binds: [normalizedEmail],
+        complete: (err, stmt, rows) => {
+          if (err) reject(err);
+          else resolve(rows[0]?.COUNT > 0);
+        },
+      });
+    });
+
+    if (exists) {
+      connectionPool.release(connection);
+      return res.status(409).json({ error: "This email is already on the waitlist" });
+    }
+
+    // Insert new signup
     await new Promise((resolve, reject) => {
       connection.execute({
-        sqlText: `INSERT INTO WAITLIST (email, ip_address, user_agent) VALUES (?, ?, ?)`,
-        binds: [email.toLowerCase().trim(), ipAddress, userAgent.substring(0, 512)],
+        sqlText: "INSERT INTO WAITLIST (email, ip_address, user_agent) VALUES (?, ?, ?)",
+        binds: [normalizedEmail, ipAddress, userAgent.substring(0, 512)],
         complete: (err, stmt, rows) => {
           connectionPool.release(connection);
           if (err) reject(err);
@@ -69,12 +88,6 @@ app.post("/api/waitlist", async (req, res) => {
     res.json({ success: true, message: "Thanks for signing up!" });
   } catch (error) {
     console.error("Snowflake error:", error);
-    
-    // Check for duplicate email (if you add a unique constraint)
-    if (error.message?.includes("duplicate")) {
-      return res.status(409).json({ error: "Email already registered" });
-    }
-    
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
