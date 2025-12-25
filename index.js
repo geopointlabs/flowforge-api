@@ -29,7 +29,7 @@ const connectionPool = snowflake.createPool(
 
 // Email validation
 const isValidEmail = (email) => {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const re = /^[^s@]+@[^s@]+.[^s@]+$/;
   return re.test(email);
 };
 
@@ -89,6 +89,50 @@ app.post("/api/waitlist", async (req, res) => {
   } catch (error) {
     console.error("Snowflake error:", error);
     res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+// Admin authentication middleware
+const requireAdmin = (req, res, next) => {
+  const apiKey = req.headers["x-admin-api-key"];
+  if (!apiKey || apiKey !== process.env.ADMIN_API_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+};
+
+// Admin: Get all waitlist signups
+app.get("/api/admin/waitlist", requireAdmin, async (req, res) => {
+  try {
+    const connection = await connectionPool.acquire();
+
+    const rows = await new Promise((resolve, reject) => {
+      connection.execute({
+        sqlText: `
+          SELECT email, signed_up_at, ip_address, user_agent
+          FROM WAITLIST
+          ORDER BY signed_up_at DESC
+        `,
+        complete: (err, stmt, rows) => {
+          connectionPool.release(connection);
+          if (err) reject(err);
+          else resolve(rows);
+        },
+      });
+    });
+
+    res.json({
+      total: rows.length,
+      signups: rows.map((row) => ({
+        email: row.EMAIL,
+        signedUpAt: row.SIGNED_UP_AT,
+        ipAddress: row.IP_ADDRESS,
+        userAgent: row.USER_AGENT,
+      })),
+    });
+  } catch (error) {
+    console.error("Snowflake error:", error);
+    res.status(500).json({ error: "Failed to fetch waitlist" });
   }
 });
 
