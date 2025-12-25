@@ -93,9 +93,15 @@ app.post("/api/waitlist", async (req, res) => {
 });
 
 // Admin authentication middleware
+// Accepts either API key or admin password
 const requireAdmin = (req, res, next) => {
   const apiKey = req.headers["x-admin-api-key"];
-  if (!apiKey || apiKey !== process.env.ADMIN_API_KEY) {
+  const password = req.headers["x-admin-password"];
+  
+  const validApiKey = apiKey && apiKey === process.env.ADMIN_API_KEY;
+  const validPassword = password && password === process.env.ADMIN_PASSWORD;
+  
+  if (!validApiKey && !validPassword) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
