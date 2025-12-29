@@ -27,6 +27,27 @@ const connectionPool = snowflake.createPool(
   { max: 5, min: 0 }
 );
 
+// Keep-alive: ping Snowflake every 4 minutes to prevent idle connection timeouts
+const KEEP_ALIVE_INTERVAL = 4 * 60 * 1000;
+setInterval(async () => {
+  try {
+    const connection = await connectionPool.acquire();
+    await new Promise((resolve, reject) => {
+      connection.execute({
+        sqlText: "SELECT 1",
+        complete: (err) => {
+          connectionPool.release(connection);
+          if (err) reject(err);
+          else resolve();
+        },
+      });
+    });
+    console.log("Snowflake keep-alive ping successful");
+  } catch (error) {
+    console.error("Snowflake keep-alive ping failed:", error.message);
+  }
+}, KEEP_ALIVE_INTERVAL);
+
 // Email validation
 const isValidEmail = (email) => {
   const re = /^[^s@]+@[^s@]+.[^s@]+$/;
@@ -138,10 +159,7 @@ app.get("/api/admin/waitlist", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Snowflake error:", error);
-    res.status(500).json({
-      error: "Failed to fetch waitlist",
-      details: error.message || String(error)
-    });
+    res.status(500).json({ error: "Failed to fetch waitlist" });
   }
 });
 
