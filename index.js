@@ -163,6 +163,40 @@ app.get("/api/admin/waitlist", requireAdmin, async (req, res) => {
   }
 });
 
+// Admin: Delete a waitlist signup
+app.delete("/api/admin/waitlist/:email", requireAdmin, async (req, res) => {
+  const { email } = req.params;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const connection = await connectionPool.acquire();
+
+    const result = await new Promise((resolve, reject) => {
+      connection.execute({
+        sqlText: "DELETE FROM WAITLIST WHERE email = ?",
+        binds: [email.toLowerCase().trim()],
+        complete: (err, stmt) => {
+          connectionPool.release(connection);
+          if (err) reject(err);
+          else resolve(stmt.getNumRowsAffected());
+        },
+      });
+    });
+
+    if (result === 0) {
+      return res.status(404).json({ error: "Email not found" });
+    }
+
+    res.json({ success: true, message: "Signup deleted" });
+  } catch (error) {
+    console.error("Snowflake error:", error);
+    res.status(500).json({ error: "Failed to delete signup" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
 });
