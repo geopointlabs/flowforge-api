@@ -192,8 +192,8 @@ app.delete("/api/admin/waitlist/:email", requireAdmin, async (req, res) => {
 
     res.json({ success: true, message: "Signup deleted" });
   } catch (error) {
-    console.error("Snowflake error:", error);
-    res.status(500).json({ error: "Failed to delete signup" });
+    console.error("Snowflake delete error:", error);
+    res.status(500).json({ error: "Failed to delete signup", details: error.message });
   }
 });
 
