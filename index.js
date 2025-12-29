@@ -138,7 +138,10 @@ app.get("/api/admin/waitlist", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Snowflake error:", error);
-    res.status(500).json({ error: "Failed to fetch waitlist" });
+    res.status(500).json({
+      error: "Failed to fetch waitlist",
+      details: error.message || String(error)
+    });
   }
 });
 
